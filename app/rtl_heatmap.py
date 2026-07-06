@@ -22,6 +22,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--yticks", default="10m", help="Approximate y tick spacing, e.g. 10m")
     parser.add_argument("--xlines", action="store_true", help="Show vertical grid lines")
     parser.add_argument("--ylines", action="store_true", help="Show horizontal grid lines")
+    parser.add_argument("--width-px", type=int, default=4096, help="Output image width in pixels")
+    parser.add_argument("--height-px", type=int, default=2300, help="Output image height in pixels")
+    parser.add_argument("--dpi", type=int, default=120, help="Output image DPI")
+    parser.add_argument(
+        "--freq-bins",
+        type=int,
+        default=0,
+        help="Horizontal frequency bins before plotting. 0 uses the output width.",
+    )
     return parser.parse_args()
 
 
@@ -54,10 +63,7 @@ def parse_duration(value: str) -> int:
     return int(float(raw))
 
 
-def load_rtl_power_csv(path: Path) -> tuple[np.ndarray, list[float], list[datetime]]:
-    rows_by_time: dict[str, list[tuple[float, float, float, list[float]]]] = {}
-    all_freqs: list[float] = []
-
+def iter_rtl_power_rows(path: Path):
     with path.open(newline="", encoding="utf-8", errors="replace") as handle:
         reader = csv.reader(handle)
         for row in reader:
@@ -66,32 +72,52 @@ def load_rtl_power_csv(path: Path) -> tuple[np.ndarray, list[float], list[dateti
             timestamp = f"{row[0].strip()} {row[1].strip()}"
             try:
                 start_hz = float(row[2])
-                stop_hz = float(row[3])
                 step_hz = float(row[4])
-                values = [float(value) for value in row[6:] if value.strip()]
+                values = np.array([float(value) for value in row[6:] if value.strip()], dtype=np.float32)
             except ValueError:
                 continue
 
-            if not values or step_hz <= 0:
+            if values.size == 0 or step_hz <= 0:
                 continue
 
-            rows_by_time.setdefault(timestamp, []).append((start_hz, stop_hz, step_hz, values))
-            all_freqs.extend(start_hz + index * step_hz for index in range(len(values)))
+            yield timestamp, start_hz, step_hz, values
 
-    if not rows_by_time or not all_freqs:
+
+def scan_csv_bounds(path: Path) -> tuple[list[str], float, float]:
+    seen_times: set[str] = set()
+    times: list[str] = []
+    min_freq = math.inf
+    max_freq = -math.inf
+
+    for timestamp, start_hz, step_hz, values in iter_rtl_power_rows(path):
+        if timestamp not in seen_times:
+            seen_times.add(timestamp)
+            times.append(timestamp)
+        min_freq = min(min_freq, start_hz)
+        max_freq = max(max_freq, start_hz + (values.size - 1) * step_hz)
+
+    if not times or not math.isfinite(min_freq) or not math.isfinite(max_freq):
         raise ValueError(f"No rtl_power samples found in {path}")
 
-    freqs = sorted(set(round(freq, 3) for freq in all_freqs))
-    freq_index = {freq: index for index, freq in enumerate(freqs)}
-    times = sorted(rows_by_time.keys())
-    matrix = np.full((len(times), len(freqs)), np.nan, dtype=float)
+    return sorted(times), min_freq, max_freq
 
-    for time_index, timestamp in enumerate(times):
-        for start_hz, _stop_hz, step_hz, values in rows_by_time[timestamp]:
-            for value_index, value in enumerate(values):
-                freq = round(start_hz + value_index * step_hz, 3)
-                matrix[time_index, freq_index[freq]] = value
 
+def load_rtl_power_csv(path: Path, freq_bins: int) -> tuple[np.ndarray, np.ndarray, list[datetime]]:
+    times, min_freq, max_freq = scan_csv_bounds(path)
+    time_index = {timestamp: index for index, timestamp in enumerate(times)}
+    freq_bins = max(512, freq_bins)
+    freq_span = max(max_freq - min_freq, 1.0)
+
+    matrix = np.full((len(times), freq_bins), -np.inf, dtype=np.float32)
+    for timestamp, start_hz, step_hz, values in iter_rtl_power_rows(path):
+        freqs = start_hz + np.arange(values.size, dtype=np.float64) * step_hz
+        bins = np.floor((freqs - min_freq) / freq_span * (freq_bins - 1)).astype(np.int32)
+        bins = np.clip(bins, 0, freq_bins - 1)
+        row = matrix[time_index[timestamp]]
+        np.maximum.at(row, bins, values)
+
+    matrix[matrix == -np.inf] = np.nan
+    freqs = np.linspace(min_freq, max_freq, freq_bins)
     parsed_times = [datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S") for timestamp in times]
     return matrix, freqs, parsed_times
 
@@ -107,14 +133,18 @@ def render_heatmap(args: argparse.Namespace) -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    matrix, freqs, times = load_rtl_power_csv(input_path)
+    width_px = max(1200, args.width_px)
+    height_px = max(800, args.height_px)
+    dpi = max(72, args.dpi)
+    freq_bins = args.freq_bins if args.freq_bins > 0 else width_px
+
+    matrix, freqs, times = load_rtl_power_csv(input_path, freq_bins)
     masked = np.ma.masked_invalid(matrix)
 
-    fig_width = 16
-    fig_height = max(6, min(18, 4 + len(times) * 0.18))
-    fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=120)
+    fig, ax = plt.subplots(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
 
     image = ax.imshow(masked, aspect="auto", interpolation="nearest", cmap=args.colormap, origin="lower")
+    image.set_resample(False)
     start_mhz = freqs[0] / 1_000_000
     stop_mhz = freqs[-1] / 1_000_000
     ax.set_title(f"{input_path.stem}  |  {start_mhz:.3f}-{stop_mhz:.3f} MHz")

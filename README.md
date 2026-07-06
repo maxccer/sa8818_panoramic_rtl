@@ -63,6 +63,11 @@ Useful knobs:
 - `RTL_GAIN`: passed directly to `rtl_power -g`.
 - `RTL_CAPTURE_DURATION`: passed to `rtl_power -e`, for example `1m`, `10m`, `1h`.
 - `HEATMAP_COLORMAP`: matplotlib colormap, default `afmhot`.
+- `HEATMAP_WIDTH_PX` / `HEATMAP_HEIGHT_PX`: rendered PNG size.
+- `HEATMAP_FREQ_BINS`: horizontal frequency bins used before plotting. `4096` is a good default for a 30-1000 MHz one-hour capture; try `8192` for more detail.
+- `HEATMAP_XTICKS`: x-axis label spacing. Avoid `1MHz` for wide captures because it creates hundreds of labels; `50MHz` is the default.
+
+Wide one-hour captures contain far more frequency bins than a normal PNG can display one-to-one. The renderer compresses frequency samples into `HEATMAP_FREQ_BINS` using max pooling, so narrow transmissions stay visible instead of being averaged away by image resizing.
 
 ## SpyServer for SDR#
 

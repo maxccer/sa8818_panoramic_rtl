@@ -29,10 +29,20 @@ def build_heatmap_command(csv_path: Path, png_path: Path) -> list[str]:
         "-c",
         os.getenv("HEATMAP_COLORMAP", "afmhot"),
         "--xticks",
-        os.getenv("HEATMAP_XTICKS", "1MHz"),
+        os.getenv("HEATMAP_XTICKS", "50MHz"),
         "--yticks",
         os.getenv("HEATMAP_YTICKS", "10m"),
+        "--width-px",
+        os.getenv("HEATMAP_WIDTH_PX", "4096"),
+        "--height-px",
+        os.getenv("HEATMAP_HEIGHT_PX", "2300"),
+        "--dpi",
+        os.getenv("HEATMAP_DPI", "120"),
     ]
+
+    freq_bins = os.getenv("HEATMAP_FREQ_BINS", "").strip()
+    if freq_bins:
+        command.extend(["--freq-bins", freq_bins])
 
     if env_flag("HEATMAP_COLORBAR", "1"):
         command.append("--colorbar")
