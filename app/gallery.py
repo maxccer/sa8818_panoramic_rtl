@@ -9,7 +9,7 @@ from flask import Flask, send_from_directory
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 PNG_DIR = Path(os.getenv("PNG_DIR", DATA_DIR / "png"))
 GALLERY_TITLE = os.getenv("GALLERY_TITLE", "SA8818 Panoramic RTL")
-FILENAME_RE = re.compile(r"^(?P<station>.+)-(?P<start>\d{14})-(?P<stop>\d{14})$")
+FILENAME_RE = re.compile(r"^(?P<prefix>.+)-(?P<start>\d{14})-(?P<stop>\d{14})$")
 
 app = Flask(__name__)
 
@@ -19,17 +19,26 @@ def parse_item(path: Path) -> dict[str, str]:
     if match:
         start = datetime.strptime(match.group("start"), "%Y%m%d%H%M%S")
         stop = datetime.strptime(match.group("stop"), "%Y%m%d%H%M%S")
-        station = match.group("station").upper()
+        prefix = match.group("prefix").upper()
+        parts = prefix.split("-")
+        station = parts[0] if parts else prefix
+        source = parts[1] if len(parts) > 1 else ""
+        band = "-".join(parts[2:]) if len(parts) > 2 else ""
+        title_parts = [part for part in (station, source, band) if part]
         return {
             "file": path.name,
             "station": station,
+            "source": source,
+            "band": band,
             "start": start.strftime("%Y-%m-%d %H:%M:%S"),
             "stop": stop.strftime("%Y-%m-%d %H:%M:%S"),
-            "title": f"{station}: {start:%Y-%m-%d %H:%M} - {stop:%H:%M}",
+            "title": f"{' / '.join(title_parts)}: {start:%Y-%m-%d %H:%M} - {stop:%H:%M}",
         }
     return {
         "file": path.name,
         "station": "",
+        "source": "",
+        "band": "",
         "start": "",
         "stop": "",
         "title": path.stem,
@@ -52,6 +61,7 @@ def index() -> str:
           </a>
           <div class="meta">
             <strong>{item['title']}</strong>
+            <span>{item['source']} {item['band']}</span>
             <span>{item['start']} - {item['stop']}</span>
           </div>
         </article>
