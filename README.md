@@ -5,8 +5,9 @@ Docker Compose stack for continuous RTL-SDR panorama capture:
 - `scanner` runs `rtl_power` against one RTL-SDR dongle and writes CSV files.
 - `heatmap` converts new CSV files to PNG images.
 - `web` serves a local gallery with capture start/end timestamps.
+- `spyserver` optionally exposes the second RTL-SDR dongle to SDR# over TCP.
 
-The second RTL-SDR dongle is intentionally unused for now. The default config uses device index `0`.
+The default scanner config uses device index `0`. SpyServer is optional and is intended for the second dongle.
 
 ## Quick Start
 
@@ -63,6 +64,52 @@ Useful knobs:
 - `RTL_CAPTURE_DURATION`: passed to `rtl_power -e`, for example `1m`, `10m`, `1h`.
 - `HEATMAP_COLORMAP`: matplotlib colormap, default `afmhot`.
 
+## SpyServer for SDR#
+
+The `spyserver` service downloads the official Airspy Linux x86_64 SpyServer build during Docker image build. Airspy documents SpyServer as supporting RTL-SDR receivers, and the Linux x86_64 build requires a 64-bit Intel/AMD CPU with AVX2/FMA.
+
+Start scanner, heatmap, web, and SpyServer:
+
+```bash
+docker compose up -d --build
+```
+
+Connect from SDR# to:
+
+```text
+spyserver://<mini-computer-ip>:5555
+```
+
+Config lives in `.env`:
+
+```dotenv
+SPYSERVER_PORT=5555
+SPYSERVER_DEVICE_TYPE=RTL-SDR
+SPYSERVER_DEVICE_SERIAL=0
+SPYSERVER_SAMPLE_RATE=2048000
+SPYSERVER_INITIAL_FREQUENCY=145500000
+SPYSERVER_INITIAL_GAIN=22
+```
+
+`SPYSERVER_DEVICE_SERIAL=0` means "first available device". Because `scanner` starts first and holds device index `0`, SpyServer should normally take the other dongle. For reliable long-term operation with two identical RTL-SDR sticks, give them unique serial numbers on the Debian host:
+
+```bash
+docker compose down
+sudo apt install -y rtl-sdr
+rtl_eeprom
+rtl_eeprom -d 0 -s 00000001
+rtl_eeprom -d 1 -s 00000002
+```
+
+Unplug/replug the dongles after changing EEPROM serials. Then set:
+
+```dotenv
+RTL_DEVICE_INDEX=0
+SPYSERVER_DEVICE_SERIAL=00000002
+```
+
+If you expose SpyServer outside your LAN, firewall it carefully. SDR# control is enabled by default with `SPYSERVER_ALLOW_CONTROL=1`.
+
 ## Data Layout
 
 Runtime files are created under `./data`:
@@ -93,5 +140,6 @@ sa8818-202607061530-202607061531.png
 docker compose logs -f scanner
 docker compose logs -f heatmap
 docker compose logs -f web
+docker compose logs -f spyserver
 docker compose down
 ```

@@ -1,6 +1,7 @@
 .git
 .env
 data/
+.tmp_spyserver/
 __pycache__/
 *.pyc
 .pytest_cache/
