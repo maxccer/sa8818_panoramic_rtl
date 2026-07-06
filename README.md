@@ -119,6 +119,26 @@ Even after assigning unique EEPROM serials, keep SpyServer at `0` unless you hav
 
 If you expose SpyServer outside your LAN, firewall it carefully. SDR# control is enabled by default with `SPYSERVER_ALLOW_CONTROL=1`.
 
+If SpyServer logs `usb_claim_interface error -6`, the device it tried to open is already busy. Check from inside the same container:
+
+```bash
+docker compose stop spyserver
+docker compose run --rm --no-deps spyserver rtl_test -d 0 -t
+docker compose run --rm --no-deps spyserver rtl_test -d 1 -t
+```
+
+With `scanner` running, `-d 0` should usually fail because scanner owns it, and `-d 1` should pass. If `-d 1` passes, set SpyServer to the second EEPROM serial in `.env`, for example:
+
+```dotenv
+SPYSERVER_DEVICE_SERIAL=22222222
+```
+
+Then recreate SpyServer:
+
+```bash
+docker compose up -d --force-recreate spyserver
+```
+
 ## Data Layout
 
 Runtime files are created under `./data`:
