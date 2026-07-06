@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 CONFIG_PATH="${SPYSERVER_CONFIG_PATH:-/opt/spyserver/spyserver.config}"
 SPYSERVER_PORT="${SPYSERVER_PORT:-5555}"
+SPYSERVER_START_DELAY="${SPYSERVER_START_DELAY:-5}"
 
 write_optional_setting() {
   local key="$1"
@@ -25,7 +26,7 @@ antenna_type = ${SPYSERVER_ANTENNA_TYPE:-}
 antenna_location = ${SPYSERVER_ANTENNA_LOCATION:-}
 general_description = ${SPYSERVER_DESCRIPTION:-SA8818 second RTL-SDR}
 
-maximum_clients = ${SPYSERVER_MAXIMUM_CLIENTS:-1}
+maximum_clients = ${SPYSERVER_MAXIMUM_CLIENTS:-10}
 allow_control = ${SPYSERVER_ALLOW_CONTROL:-1}
 
 device_type = ${SPYSERVER_DEVICE_TYPE:-RTL-SDR}
@@ -54,4 +55,12 @@ write_optional_setting "converter_offset" "${SPYSERVER_CONVERTER_OFFSET:-}"
 write_optional_setting "enable_bias_tee" "${SPYSERVER_ENABLE_BIAS_TEE:-}"
 
 echo "spyserver: port=${SPYSERVER_PORT} device_type=${SPYSERVER_DEVICE_TYPE:-RTL-SDR} device_serial=${SPYSERVER_DEVICE_SERIAL:-0}"
+echo "spyserver: librtlsdr files:"
+find /usr/lib -name 'librtlsdr.so*' -ls || true
+echo "spyserver: generated config:"
+cat "$CONFIG_PATH"
+if [ "$SPYSERVER_START_DELAY" != "0" ]; then
+  echo "spyserver: waiting ${SPYSERVER_START_DELAY}s before opening the device"
+  sleep "$SPYSERVER_START_DELAY"
+fi
 exec /opt/spyserver/spyserver "$CONFIG_PATH"

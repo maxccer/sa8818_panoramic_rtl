@@ -89,14 +89,16 @@ Config lives in `.env`:
 
 ```dotenv
 SPYSERVER_PORT=5555
+SPYSERVER_START_DELAY=5
 SPYSERVER_DEVICE_TYPE=RTL-SDR
 SPYSERVER_DEVICE_SERIAL=0
 SPYSERVER_SAMPLE_RATE=2048000
-SPYSERVER_INITIAL_FREQUENCY=145500000
-SPYSERVER_INITIAL_GAIN=22
+SPYSERVER_MAXIMUM_CLIENTS=10
 ```
 
-`SPYSERVER_DEVICE_SERIAL=0` means "first available device". Because `scanner` starts first and holds device index `0`, SpyServer should normally take the other dongle. For reliable long-term operation with two identical RTL-SDR sticks, give them unique serial numbers on the Debian host:
+`SPYSERVER_DEVICE_SERIAL=0` means "first available device". This is also the setting used by the known-working baremetal SpyServer config. Because `scanner` starts first and holds device index `0`, SpyServer should normally take the other dongle.
+
+For reliable long-term operation with two identical RTL-SDR sticks, give them unique serial numbers on the Debian host:
 
 ```bash
 docker compose down
@@ -110,8 +112,10 @@ Unplug/replug the dongles after changing EEPROM serials. Then set:
 
 ```dotenv
 RTL_DEVICE_INDEX=0
-SPYSERVER_DEVICE_SERIAL=00000002
+SPYSERVER_DEVICE_SERIAL=0
 ```
+
+Even after assigning unique EEPROM serials, keep SpyServer at `0` unless you have verified that its `device_serial` parser matches your RTL-SDR serial format.
 
 If you expose SpyServer outside your LAN, firewall it carefully. SDR# control is enabled by default with `SPYSERVER_ALLOW_CONTROL=1`.
 
